@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
+import 'package:image/image.dart' as img;
 
+import 'package:wind_send/clipboard_sync/clipboard_domain.dart';
 import 'package:wind_send/device.dart';
 import 'package:wind_send/language.dart';
 
@@ -99,17 +103,33 @@ class _ClipboardSyncPageState extends State<ClipboardSyncPage> {
               ],
             ),
             actions: [
-              Tooltip(
-                message: isRunning
-                    ? context.formatString(AppLocale.csStopSession, [])
-                    : context.formatString(AppLocale.csRestartSession, []),
-                child: Switch(
-                  value: isRunning,
-                  onChanged: (value) {
-                    unawaited(_session.toggleRunning(value));
-                  },
+              if (_session.isAutoManagedCapabilities)
+                Tooltip(
+                  message: context.formatString(
+                    AppLocale.csAutoSyncManaging,
+                    [],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Icon(
+                      Icons.auto_awesome,
+                      size: 22,
+                      color: _statusColor(context),
+                    ),
+                  ),
+                )
+              else
+                Tooltip(
+                  message: isRunning
+                      ? context.formatString(AppLocale.csStopSession, [])
+                      : context.formatString(AppLocale.csRestartSession, []),
+                  child: Switch(
+                    value: isRunning,
+                    onChanged: (value) {
+                      unawaited(_session.toggleRunning(value));
+                    },
+                  ),
                 ),
-              ),
               const SizedBox(width: 16),
             ],
           ),
@@ -192,6 +212,22 @@ class _ClipboardSyncPageState extends State<ClipboardSyncPage> {
                         ),
                       ),
                       const SizedBox(width: 12),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: IconButton(
+                          onPressed: isRunning ? _handleSendImage : null,
+                          tooltip: context.formatString(
+                            AppLocale.csSendImage,
+                            [],
+                          ),
+                          icon: const Icon(Icons.image_outlined),
+                          color: isRunning
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          iconSize: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 2),
                         child: AnimatedContainer(
@@ -379,6 +415,85 @@ class _ClipboardSyncPageState extends State<ClipboardSyncPage> {
     }
     unawaited(_session.copyTextToLocalClipboard(text));
     _textController.clear();
+  }
+
+  Future<void> _handleSendImage() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final paths = await _session.device.pickFiles();
+      if (paths.isEmpty) {
+        return;
+      }
+      await _session.device.doSendAction(() => context, paths);
+      if (!mounted) {
+        return;
+      }
+      var recordedImage = false;
+      for (final path in paths) {
+        final payload = await _buildManualImagePayload(path);
+        if (payload != null) {
+          _session.recordManualOutgoing(payload);
+          recordedImage = true;
+        }
+      }
+      if (!recordedImage) {
+        _session.recordManualStatus(
+          LocaleText(AppLocale.csImageSent, [_session.device.targetDeviceName]),
+        );
+      }
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            context.formatString(AppLocale.csImageSent, [
+              _session.device.targetDeviceName,
+            ]),
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(context.formatString(AppLocale.csSendImageFailed, [])),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
+  Future<ClipboardPayload?> _buildManualImagePayload(String path) async {
+    const imageExtensions = {'jpg', 'jpeg', 'png', 'bmp', 'gif', 'webp'};
+    final dotIndex = path.lastIndexOf('.');
+    if (dotIndex < 0) {
+      return null;
+    }
+    final ext = path.substring(dotIndex + 1).toLowerCase();
+    if (!imageExtensions.contains(ext)) {
+      return null;
+    }
+    final file = File(path);
+    if (!await file.exists()) {
+      return null;
+    }
+    final bytes = await file.readAsBytes();
+    if (ext == 'png') {
+      return ClipboardPayload.imagePng(bytes);
+    }
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      return null;
+    }
+    return ClipboardPayload.imagePng(
+      Uint8List.fromList(img.encodePng(decoded)),
+    );
   }
 
   void _handleSessionChanged() {

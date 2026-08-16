@@ -21,6 +21,7 @@ import 'db/sqlite/history_service.dart';
 import 'theme.dart';
 import 'language.dart';
 import 'ui/setting/setting.dart';
+import 'ui/clipboard_sync/auto_clipboard_sync_controller.dart';
 import 'ui/device_pairing/add_device_dialog.dart';
 import 'ui/transfer_history/history_page.dart';
 import 'utils/utils.dart';
@@ -64,6 +65,9 @@ Future<void> init() async {
 
   // Run history cleanup in background if enabled (Section 3.3)
   HistoryCleanupService.instance.runStartupCleanupIfEnabled();
+
+  // Start automatic clipboard sync (text only) in the background if enabled.
+  unawaited(AutoClipboardSyncController.instance.ensureStarted());
 }
 
 void main() async {
@@ -78,14 +82,15 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final FlutterLocalization _localization = FlutterLocalization.instance;
   late ThemeMode themeMode;
   late AppColorSeed colorSelected;
 
-  // Localization is not initialized here, so context.formatString cannot be used
   @override
   void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // language
     _localization.init(
       mapLocales: [
@@ -112,8 +117,22 @@ class _MyAppState extends State<MyApp> {
     if (Platform.isAndroid || Platform.isIOS) {
       initPlatformState();
     }
+  }
 
-    super.initState();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // WiFi/network may have changed while backgrounded; re-evaluate the
+      // auto clipboard sync target.
+      unawaited(AutoClipboardSyncController.instance.syncWithAutoTarget());
+    }
   }
 
   Future<void> initPlatformState() async {
@@ -234,6 +253,8 @@ class _MyHomePageState extends State<MyHomePage> {
         devices = ds;
       }
     });
+    // Re-evaluate the auto clipboard sync target after device list changes.
+    unawaited(AutoClipboardSyncController.instance.syncWithAutoTarget());
   }
 
   @override

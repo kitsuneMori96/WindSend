@@ -24,6 +24,8 @@ mixin AppLocale {
   static const String followSystemTheme = 'followSystemTheme';
   static const String defaultSyncDevice = 'defaultSyncDevice';
   static const String defaultShareDevice = 'defaultShareDevice';
+  static const String autoClipboardSync = 'autoClipboardSync';
+  static const String autoClipboardSyncTip = 'autoClipboardSyncTip';
   static const String deviceNameLocal = 'deviceNameLocal';
   static const String fileSavePath = 'fileSavePath';
   static const String imageSavePath = 'imageSavePath';
@@ -235,6 +237,10 @@ mixin AppLocale {
   // Clipboard Sync - Page
   static const String csClipboardSync = 'csClipboardSync';
   static const String csMenuLabel = 'csMenuLabel';
+  static const String csAutoSyncManaging = 'csAutoSyncManaging';
+  static const String csSendImage = 'csSendImage';
+  static const String csImageSent = 'csImageSent';
+  static const String csSendImageFailed = 'csSendImageFailed';
   static const String csStopSession = 'csStopSession';
   static const String csRestartSession = 'csRestartSession';
   static const String csTypeTextToCopy = 'csTypeTextToCopy';
@@ -410,6 +416,8 @@ mixin AppLocale {
     followSystemTheme: '跟随系统主题',
     defaultSyncDevice: '默认同步设备(主页下拉)',
     defaultShareDevice: '默认分享设备',
+    autoClipboardSync: '剪贴板自动同步(仅文本)',
+    autoClipboardSyncTip: '后台检测剪贴板变化并自动推送到默认同步设备，仅同步文本',
     deviceNameLocal: '本机设备名称',
     fileSavePath: '文件保存路径',
     imageSavePath: '图片保存路径',
@@ -685,6 +693,10 @@ mixin AppLocale {
     // Clipboard Sync - Page
     csClipboardSync: '剪贴板同步',
     csMenuLabel: '同步',
+    csAutoSyncManaging: '由自动同步管理',
+    csSendImage: '发送图片/文件',
+    csImageSent: '已发送图片/文件到 %a',
+    csSendImageFailed: '图片/文件发送失败',
     csStopSession: '停止会话',
     csRestartSession: '重启会话',
     csTypeTextToCopy: '输入要复制的文本…',
@@ -771,6 +783,9 @@ mixin AppLocale {
     followSystemTheme: 'Follow system theme',
     defaultSyncDevice: 'Default sync device (home page drop down)',
     defaultShareDevice: 'Default share device',
+    autoClipboardSync: 'Auto clipboard sync (text only)',
+    autoClipboardSyncTip:
+        'Detect clipboard changes in the background and push text to the default sync device',
     deviceNameLocal: 'Local device name',
     fileSavePath: 'File save path',
     imageSavePath: 'Image save path',
@@ -1064,6 +1079,10 @@ mixin AppLocale {
     // Clipboard Sync - Page
     csClipboardSync: 'Clipboard Sync',
     csMenuLabel: 'Sync',
+    csAutoSyncManaging: 'Managed by auto sync',
+    csSendImage: 'Send image/file',
+    csImageSent: 'Image/file sent to %a',
+    csSendImageFailed: 'Failed to send image/file',
     csStopSession: 'Stop session',
     csRestartSession: 'Restart session',
     csTypeTextToCopy: 'Type text to copy...',

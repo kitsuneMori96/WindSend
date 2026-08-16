@@ -159,22 +159,32 @@ final class ClipboardSyncPageSessionStore {
   final Map<RemotePeerKey, _RetainedClipboardSyncPageSession> _sessions =
       <RemotePeerKey, _RetainedClipboardSyncPageSession>{};
 
-  ClipboardSyncPageSession acquire(Device device) {
+  ClipboardSyncPageSession acquire(
+    Device device, {
+    SyncCapabilities? capabilities,
+  }) {
     final remotePeerKey = device.remotePeerKey;
     final retained = _sessions[remotePeerKey];
-    if (retained != null) {
+    if (retained != null && !retained.session.isDisposed) {
       retained.refCount += 1;
       retained.session.updateDevice(device);
       return retained.session;
     }
 
-    final session = ClipboardSyncPageSession._(
+    late final ClipboardSyncPageSession session;
+    session = ClipboardSyncPageSession._(
       device: device,
+      capabilities: capabilities,
       sessionRegistry: _sessionRegistry,
       eventHub: _eventHub,
       historyRecorder: _historyRecorder,
       rawDomainAdapter: _rawDomainAdapter,
-      onDisposed: () => _sessions.remove(remotePeerKey),
+      onDisposed: () {
+        final current = _sessions[remotePeerKey];
+        if (identical(current?.session, session)) {
+          _sessions.remove(remotePeerKey);
+        }
+      },
     );
     _sessions[remotePeerKey] = _RetainedClipboardSyncPageSession(session);
     unawaited(session.ensureStarted());
@@ -183,7 +193,7 @@ final class ClipboardSyncPageSessionStore {
 
   void release(ClipboardSyncPageSession session) {
     final retained = _sessions[session.remotePeerKey];
-    if (retained == null) {
+    if (retained == null || !identical(retained.session, session)) {
       return;
     }
     retained.refCount -= 1;
@@ -214,7 +224,9 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     required ClipboardSyncHistoryRecorder historyRecorder,
     required ClipboardDomainAdapter rawDomainAdapter,
     required VoidCallback onDisposed,
+    SyncCapabilities? capabilities,
   }) : _device = device,
+       _capabilities = capabilities,
        _sessionRegistry = sessionRegistry,
        _baseEventHub = eventHub,
        _historyRecorder = historyRecorder,
@@ -230,6 +242,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
 
   final ClipboardSyncSessionRegistry _sessionRegistry;
   final ClipboardEventHub _baseEventHub;
+  final SyncCapabilities? _capabilities;
   final ClipboardSyncHistoryRecorder _historyRecorder;
   final ClipboardDomainAdapter _rawDomainAdapter;
   final VoidCallback _onDisposed;
@@ -300,6 +313,20 @@ final class ClipboardSyncPageSession extends ChangeNotifier
   bool get isRunning =>
       phase != ClipboardSyncPagePhase.paused &&
       phase != ClipboardSyncPagePhase.closed;
+
+  bool get isDisposed => _disposed;
+
+  /// Whether this session is bound to text-only capabilities (auto sync).
+  ///
+  /// When true, the session is shared with auto clipboard sync: the manual
+  /// page should not offer a running toggle (auto sync manages it), though
+  /// the image/file send entry remains available.
+  bool get isAutoManagedCapabilities {
+    final capabilities = _capabilities;
+    return capabilities != null &&
+        capabilities.supportsPayloadKind(ClipboardPayloadKind.textBundle) &&
+        !capabilities.supportsPayloadKind(ClipboardPayloadKind.imagePng);
+  }
 
   int? get lastRemoteAckUpTo => _coreState?.outboundAckUpTo;
 
@@ -420,6 +447,32 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     notifyListeners();
   }
 
+  /// Adds an outgoing timeline item for a payload sent through the legacy
+  /// one-shot transfer (e.g. a manually picked image/file).
+  ///
+  /// History is intentionally not recorded here: the legacy transfer route
+  /// (e.g. [Device.doSendAction]) already writes its own history entries.
+  void recordManualOutgoing(ClipboardPayload payload) {
+    if (payload is! ClipboardImagePngPayload) {
+      return;
+    }
+    _timeline.add(
+      ClipboardSyncEventTimelineItem(
+        id: 'manual-${DateTime.now().microsecondsSinceEpoch}',
+        createdAt: DateTime.now(),
+        direction: ClipboardSyncEventDirection.outgoing,
+        payload: payload,
+        sourceLabel: const LocaleText(AppLocale.csSourceManualCapture),
+        peerLabel: _device.targetDeviceName,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void recordManualStatus(LocaleText content) {
+    _recordStatus(content, icon: Icons.image);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_disposed) {
@@ -494,6 +547,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       eventHub: _eventHub,
       domainAdapter: domainAdapter,
       transportConnector: transportConnector,
+      localCapabilities: _capabilities,
     );
     _coreSession = session;
     _coreState = session.state;

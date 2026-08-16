@@ -20,6 +20,15 @@ SyncCapabilities buildDefaultSyncCapabilities() {
   );
 }
 
+/// Capabilities for auto clipboard sync: text only, no image payloads.
+SyncCapabilities buildTextOnlySyncCapabilities() {
+  return SyncCapabilities(
+    payloadKinds: <ClipboardPayloadKind>{ClipboardPayloadKind.textBundle},
+    htmlMode: SyncHtmlMode.plainTextFallback,
+    maxBodyBytes: defaultSyncMaxBodyBytes,
+  );
+}
+
 enum SyncHtmlMode { full, plainTextFallback }
 
 enum SyncCloseCode {

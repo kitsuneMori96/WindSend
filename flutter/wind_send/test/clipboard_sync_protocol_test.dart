@@ -100,6 +100,38 @@ void main() {
     });
   });
 
+  group('Capabilities', () {
+    test('text-only capabilities exclude imagePng', () {
+      final capabilities = buildTextOnlySyncCapabilities();
+
+      expect(
+        capabilities.payloadKinds,
+        equals(<ClipboardPayloadKind>{ClipboardPayloadKind.textBundle}),
+      );
+      expect(
+        capabilities.supportsPayloadKind(ClipboardPayloadKind.textBundle),
+        isTrue,
+      );
+      expect(
+        capabilities.supportsPayloadKind(ClipboardPayloadKind.imagePng),
+        isFalse,
+      );
+      expect(capabilities.meetsMinimumRequirements(), isTrue);
+    });
+
+    test('text-only capabilities negotiate to textBundle only', () {
+      final negotiated = buildDefaultSyncCapabilities().intersect(
+        buildTextOnlySyncCapabilities(),
+      );
+
+      expect(
+        negotiated.payloadKinds,
+        equals(<ClipboardPayloadKind>{ClipboardPayloadKind.textBundle}),
+      );
+      expect(negotiated.htmlMode, SyncHtmlMode.plainTextFallback);
+    });
+  });
+
   group('SyncSessionQueue', () {
     test(
       'tracks replay requirements without queue-local duplicate suppression',

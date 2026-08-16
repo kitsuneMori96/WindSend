@@ -1,11 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../db/shared_preferences/cnf.dart';
 import '../../language.dart';
 import '../../utils/utils.dart';
 import '../../device.dart';
+import '../clipboard_sync/auto_clipboard_sync_controller.dart';
 import 'log_view.dart';
 
 class SettingPage extends StatefulWidget {
@@ -26,6 +30,7 @@ class SettingPage extends StatefulWidget {
 class _SettingPageState extends State<SettingPage> {
   bool followSystemTheme = LocalConfig.followSystemTheme;
   bool autoSelectSyncDeviceByBssid = LocalConfig.autoSelectSyncDeviceByBssid;
+  bool enableAutoClipboardSync = LocalConfig.enableAutoClipboardSync;
   Locale language = LocalConfig.locale;
   String deviceName = globalLocalDeviceName;
   String defaultSyncDevice = LocalConfig.defaultSyncDevice ?? '';
@@ -60,6 +65,8 @@ class _SettingPageState extends State<SettingPage> {
           ),
           _SettingsSection(
             children: [
+              autoClipboardSyncSetting(context),
+              _SettingsSection.defaultDivider(context),
               defaultSyncDeviceSetting(context),
               _SettingsSection.defaultDivider(context),
               defaultShareDeviceSetting(context),
@@ -92,6 +99,31 @@ class _SettingPageState extends State<SettingPage> {
           followSystemTheme = value;
         });
         widget.onFollowSystemThemeChanged(value);
+      },
+    );
+  }
+
+  Widget autoClipboardSyncSetting(BuildContext context) {
+    return SwitchListTile(
+      title: Text(context.formatString(AppLocale.autoClipboardSync, [])),
+      subtitle: Text(context.formatString(AppLocale.autoClipboardSyncTip, [])),
+      secondary: const Icon(Icons.sync),
+      value: enableAutoClipboardSync,
+      activeThumbColor: Theme.of(context).colorScheme.primary,
+      onChanged: (value) async {
+        if (value && Platform.isAndroid) {
+          try {
+            // Required for the clipboard watcher to keep running in the
+            // background (foreground-service notification + overlay).
+            await Permission.notification.request();
+            await Permission.systemAlertWindow.request();
+          } catch (_) {}
+        }
+        setState(() {
+          enableAutoClipboardSync = value;
+        });
+        await LocalConfig.setEnableAutoClipboardSync(value);
+        await AutoClipboardSyncController.instance.syncWithAutoTarget();
       },
     );
   }
@@ -246,6 +278,8 @@ class _SettingPageState extends State<SettingPage> {
             defaultSyncDevice = result;
           });
           LocalConfig.setDefaultSyncDevice(result);
+          // The auto clipboard sync target may have changed.
+          AutoClipboardSyncController.instance.syncWithAutoTarget();
         }
       },
     );

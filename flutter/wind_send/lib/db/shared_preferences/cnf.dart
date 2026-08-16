@@ -34,6 +34,7 @@ class LocalConfig {
   static const String _imageSavePathKey = 'ImageSavePath';
   static const String _defaultShareDeviceKey = 'DefaultShareDevice';
   static const String _defaultSyncDeviceKey = 'DefaultSyncDevice';
+  static const String _enableAutoClipboardSyncKey = 'EnableAutoClipboardSync';
   static const String _deviceNameKey = 'DeviceName';
 
   static late final SharedPreferences _sp;
@@ -176,6 +177,13 @@ class LocalConfig {
     } else {
       return await _sp.setString(_defaultSyncDeviceKey, value);
     }
+  }
+
+  /// Auto clipboard sync (text only) enabled. Defaults to enabled.
+  static bool get enableAutoClipboardSync =>
+      _sp.getBool(_enableAutoClipboardSyncKey) ?? true;
+  static Future<bool> setEnableAutoClipboardSync(bool value) async {
+    return await _sp.setBool(_enableAutoClipboardSyncKey, value);
   }
 
   /// Default share device
