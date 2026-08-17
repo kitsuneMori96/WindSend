@@ -705,6 +705,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
             icon: Icons.swap_horiz,
           );
         case core_session.ClipboardSyncSessionStatus.active:
+          unawaited(_retryShizukuSetupIfNeeded());
           _recordStatus(
             LocaleText(AppLocale.csSessionActiveOver, [
               _transportLabelLocaleText(),
@@ -887,6 +888,20 @@ final class ClipboardSyncPageSession extends ChangeNotifier
   DateTime? _lastShizukuControlSentAt;
 
   static const Duration _shizukuControlCooldown = Duration(minutes: 10);
+
+  /// Retries the Shizuku setup handoff once the sync session is attached and
+  /// ready to send (the initial probe often runs before the session exists).
+  Future<void> _retryShizukuSetupIfNeeded() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    try {
+      final environment = await clipboardManager.getCurrentEnvironment();
+      await _maybeRequestShizukuSetup(environment);
+    } catch (error) {
+      _syncLogger()('Shizuku setup retry failed: $error');
+    }
+  }
 
   /// When Shizuku is missing, not running, or not granted, enqueue the
   /// control token so the PC clipboard guard can set Shizuku up over adb.
