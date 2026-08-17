@@ -964,16 +964,28 @@ final class ClipboardSyncPageSession extends ChangeNotifier
   /// proactively pop the Shizuku grant dialog while the app is foregrounded so
   /// a PC-driven adb flow (activate Shizuku, bring the app forward) can finish
   /// the grant with a single tap.
-  Future<void> _maybeAutoRequestShizukuGrant(
-    EnvironmentType environment,
-  ) async {
-    if (environment != EnvironmentType.shizuku || _shizukuGrantRequested) {
+  ///
+  /// Note: getCurrentEnvironment() reports `none` while Shizuku is running but
+  /// not granted (the plugin only reports environments with permission), so
+  /// this cannot rely on the probe's environment value.
+  Future<void> _maybeAutoRequestShizukuGrant() async {
+    if (_shizukuGrantRequested) {
       return;
     }
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
       return;
     }
     try {
+      int? shizukuVersion;
+      try {
+        shizukuVersion = await clipboardManager.getShizukuVersion();
+      } catch (error) {
+        // Binder not connected: Shizuku is not running, nothing to grant.
+        return;
+      }
+      if (shizukuVersion == null) {
+        return;
+      }
       final granted = await clipboardManager.checkPermission(
         EnvironmentType.shizuku,
       );
@@ -995,7 +1007,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       try {
         final environment = await clipboardManager.getCurrentEnvironment();
         await _maybeRequestShizukuSetup(environment);
-        await _maybeAutoRequestShizukuGrant(environment);
+        await _maybeAutoRequestShizukuGrant();
         final overlayGranted = await Permission.systemAlertWindow.isGranted;
         final notificationGranted = await Permission.notification.isGranted;
 

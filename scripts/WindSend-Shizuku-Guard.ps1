@@ -43,6 +43,40 @@ function Show-Balloon([string]$title, [string]$text) {
 if ($Action) {
     Write-Log 'action: handling shizuku control token'
 
+    # adb invocation with a hard timeout. The adb server can stall on a
+    # half-dead transport (e.g. the wireless mDNS one), so never rely on adb
+    # returning on its own.
+    function Invoke-Adb([string[]]$argsList, [int]$timeoutSec = 25) {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $adb
+        $psi.Arguments = (
+            $argsList | ForEach-Object {
+                if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
+            }
+        ) -join ' '
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        try {
+            $p = [System.Diagnostics.Process]::Start($psi)
+        } catch {
+            Write-Log "action: adb launch failed: $_"
+            return $null
+        }
+        # Read the pipes asynchronously BEFORE waiting: large outputs (e.g.
+        # pm list packages) would otherwise fill the pipe buffer and deadlock
+        # the child, which then never exits.
+        $outTask = $p.StandardOutput.ReadToEndAsync()
+        $errTask = $p.StandardError.ReadToEndAsync()
+        if (-not $p.WaitForExit($timeoutSec * 1000)) {
+            Write-Log "action: adb timed out: $($argsList -join ' ')"
+            try { $p.Kill() } catch { }
+            return $null
+        }
+        return $outTask.Result
+    }
+
     # locate adb
     $adb = $null
     $cmd = Get-Command adb -ErrorAction SilentlyContinue
@@ -64,34 +98,82 @@ if ($Action) {
         exit 1
     }
 
-    # usb device present?
-    $devices = (& $adb devices 2>$null) -join "`n"
-    $attached = $devices -split "`n" | Where-Object { $_ -match '^\S+\s+device$' }
-    if (-not $attached) {
+    # usb device present? (the wireless mDNS transport flaps and can stall
+    # the adb server, so retry and drop wireless transports for stability)
+    $serials = @()
+    for ($i = 0; $i -lt 3; $i++) {
+        $devices = Invoke-Adb @('devices')
+        if ($devices) {
+            $serials = $devices -split '\r?\n' |
+                Where-Object { $_ -match '^\S+\s+device$' } |
+                ForEach-Object { ($_ -split '\s+')[0] }
+            if ($serials) { break }
+        }
+        Write-Log "action: adb devices retry $($i + 1)"
+        Start-Sleep -Seconds 2
+    }
+    foreach ($s in $serials) {
+        if ($s -match '^adb-') {
+            Invoke-Adb @('disconnect', $s) | Out-Null
+        }
+    }
+    # Prefer a USB transport; the phone may also expose a wireless mDNS
+    # transport (adb-...), and adb refuses to run without -s when both exist.
+    $serial = $serials | Where-Object { $_ -notmatch '^adb-' } |
+        Select-Object -First 1
+    if (-not $serial) { $serial = $serials | Select-Object -First 1 }
+    if (-not $serial) {
         Write-Log 'action: no usb device attached'
         Show-Balloon 'WindSend Shizuku' '未检测到已授权的 USB 设备，请插入数据线并允许调试后重试。'
         exit 1
     }
-    Write-Log 'action: usb device attached'
+    Write-Log "action: usb device attached (serial=$serial)"
+    $adbTarget = @('-s', $serial)
 
     # shizuku installed?
-    $pkg = (& $adb shell pm list packages 2>$null) -join "`n"
-    if ($pkg -notmatch 'moe\.shizuku\.xyz') {
+    $pkg = Invoke-Adb @('shell', 'pm', 'list', 'packages') -timeoutSec 40
+    Write-Log "action: pm list done ($($pkg -ne $null))"
+    if (-not $pkg -or $pkg -notmatch 'moe\.shizuku') {
         Write-Log 'action: shizuku not installed'
         Show-Balloon 'WindSend Shizuku' '手机未安装 Shizuku，请在手机上安装后重试（shizuku.rikka.app）。'
         exit 1
     }
 
     # activate if not running
-    $pidOut = (& $adb shell pidof moe.shizuku.xyz 2>$null) -join ''
+    $pidOut = Invoke-Adb @('shell', 'pidof', 'shizuku_server')
     if ($pidOut -match '\d') {
         Write-Log 'action: shizuku already running'
     } else {
         Write-Log 'action: activating shizuku via adb'
-        & $adb shell sh /sdcard/Android/data/moe.shizuku.xyz/start.sh 2>$null | Out-Null
-        Start-Sleep -Seconds 3
-        $pid2 = (& $adb shell pidof moe.shizuku.xyz 2>$null) -join ''
-        if ($pid2 -notmatch '\d') {
+        # Modern Shizuku v13+: run the starter directly from the APK's native
+        # lib directory (start.sh is only written after the app is opened).
+        $apk = (Invoke-Adb @('shell', 'pm', 'path', 'moe.shizuku.privileged.api')) -replace '^package:', ''
+        $apk = $apk.Trim()
+        $abi = (Invoke-Adb @('shell', 'getprop', 'ro.product.cpu.abi')).Trim()
+        if ($abi -match '^(\w+?)-') { $abi = $matches[1] }
+        $candidates = @()
+        if ($apk -and $abi) {
+            $libDir = ($apk -replace '/base\.apk$', '') + '/lib'
+            $candidates += "$libDir/$abi/libshizuku.so"
+            $candidates += "$libDir/arm64/libshizuku.so"
+        }
+        $candidates += '/sdcard/Android/data/moe.shizuku.privileged.api/start.sh'
+        $candidates += '/sdcard/Android/data/moe.shizuku.privileged.api/files/start.sh'
+        $activated = $false
+        foreach ($c in $candidates) {
+            $exists = Invoke-Adb @('shell', "ls $c")
+            if (-not $exists) { continue }
+            Write-Log "action: trying $c"
+            if ($c.EndsWith('.sh')) {
+                Invoke-Adb @('shell', "sh $c") | Out-Null
+            } else {
+                Invoke-Adb @('shell', $c) | Out-Null
+            }
+            Start-Sleep -Seconds 3
+            $pid2 = Invoke-Adb @('shell', 'pidof', 'shizuku_server')
+            if ($pid2 -match '\d') { $activated = $true; break }
+        }
+        if (-not $activated) {
             Write-Log 'action: activation failed'
             Show-Balloon 'WindSend Shizuku' 'Shizuku 激活失败，请手动在手机 Shizuku App 内激活。'
             exit 1
@@ -100,7 +182,7 @@ if ($Action) {
 
     # bring WindSend to foreground so it auto-requests the grant dialog
     Write-Log 'action: bringing WindSend to foreground'
-    & $adb shell am start -n com.doraemon.wind_send/.MainActivity 2>$null | Out-Null
+    Invoke-Adb @('shell', 'am', 'start', '-n', 'com.doraemon.wind_send/.MainActivity') | Out-Null
     Write-Log 'action: done - please tap Allow on the phone'
     exit 0
 }
@@ -119,14 +201,12 @@ public static class WindSendClipboardApi {
     public static extern bool AddClipboardFormatListener(IntPtr hwnd);
 }
 
-public class WindSendClipboardGuardForm : Form {
+public class WindSendClipboardGuardWindow : NativeWindow {
     public const int WM_CLIPBOARDUPDATE = 0x031D;
     public event EventHandler ClipboardUpdated;
-    public WindSendClipboardGuardForm() {
-        ShowInTaskbar = false;
-        FormBorderStyle = FormBorderStyle.None;
-        WindowState = FormWindowState.Minimized;
-        Opacity = 0;
+    public IntPtr CreateListenerWindow() {
+        CreateHandle(new CreateParams());
+        return Handle;
     }
     protected override void WndProc(ref Message m) {
         if (m.Msg == WM_CLIPBOARDUPDATE && ClipboardUpdated != null) {
@@ -135,21 +215,21 @@ public class WindSendClipboardGuardForm : Form {
         base.WndProc(ref m);
     }
 }
-'@
+'@ -ReferencedAssemblies System.Windows.Forms, System.Drawing
 
 $script:prevText = $null
 $script:lastHandledAt = $null
 
-$form = New-Object WindSendClipboardGuardForm
-$hwnd = $form.Handle
+$window = New-Object WindSendClipboardGuardWindow
+$hwnd = $window.CreateListenerWindow()
 if (-not [WindSendClipboardApi]::AddClipboardFormatListener($hwnd)) {
-    Write-Log 'guard: AddClipboardFormatListener failed'
+    Write-Log "guard: AddClipboardFormatListener failed (hwnd=$hwnd)"
     exit 1
 }
 Write-Log "guard: started (hwnd=$hwnd)"
 
 # Runs synchronously on the UI message-pump thread for every clipboard update.
-$form.add_ClipboardUpdated({
+$window.add_ClipboardUpdated({
     $text = $null
     try {
         $text = [System.Windows.Forms.Clipboard]::GetText(
@@ -182,4 +262,4 @@ $form.add_ClipboardUpdated({
 })
 
 Write-Log 'guard: listening for clipboard updates'
-[System.Windows.Forms.Application]::Run($form)
+[System.Windows.Forms.Application]::Run()
