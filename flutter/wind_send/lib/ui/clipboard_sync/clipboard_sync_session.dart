@@ -884,6 +884,56 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     }
   }
 
+  DateTime? _lastShizukuControlSentAt;
+
+  static const Duration _shizukuControlCooldown = Duration(minutes: 10);
+
+  /// When Shizuku is missing, not running, or not granted, enqueue the
+  /// control token so the PC clipboard guard can set Shizuku up over adb.
+  Future<void> _maybeRequestShizukuSetup(EnvironmentType environment) async {
+    final now = DateTime.now();
+    final last = _lastShizukuControlSentAt;
+    if (last != null && now.difference(last) < _shizukuControlCooldown) {
+      return;
+    }
+    try {
+      final shizukuVersion = await clipboardManager.getShizukuVersion();
+      final shizukuGranted = await clipboardManager.checkPermission(
+        EnvironmentType.shizuku,
+      );
+      final needsSetup = shizukuVersion == null ||
+          environment != EnvironmentType.shizuku ||
+          !shizukuGranted;
+      if (!needsSetup) {
+        return;
+      }
+      _lastShizukuControlSentAt = now;
+      final session = _coreSession;
+      if (session == null || session.isClosed) {
+        _syncLogger()('Shizuku setup requested but no active sync session.');
+        return;
+      }
+      final snapshot = ClipboardSnapshot.observed(
+        payload: ClipboardPayload.text(
+          TextBundle(plainText: '${core_session.kShizukuControlPrefix}action=activate'),
+        ),
+        observedAt: DateTime.now().toUtc(),
+        source: ClipboardObservationSource.manualRead,
+      );
+      final accepted = await session.observeLocalSnapshot(snapshot);
+      if (accepted) {
+        _recordOutgoingSnapshotIfUiLeaseDetached(snapshot);
+      }
+      _syncLogger()(
+        accepted
+            ? 'Shizuku setup control token queued to ${_device.targetDeviceName}.'
+            : 'Shizuku setup control token was not accepted by the session.',
+      );
+    } catch (error) {
+      _syncLogger()('Shizuku setup request failed: $error');
+    }
+  }
+
   bool _shizukuGrantRequested = false;
 
   /// When Shizuku is running but WindSend has not been granted permission yet,
@@ -920,6 +970,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     if (Platform.isAndroid) {
       try {
         final environment = await clipboardManager.getCurrentEnvironment();
+        await _maybeRequestShizukuSetup(environment);
         await _maybeAutoRequestShizukuGrant(environment);
         final overlayGranted = await Permission.systemAlertWindow.isGranted;
         final notificationGranted = await Permission.notification.isGranted;

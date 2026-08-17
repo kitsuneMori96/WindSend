@@ -15,6 +15,19 @@ import 'remote_peer_key.dart';
 import 'sync_session_protocol.dart';
 import 'sync_session_queue.dart';
 
+/// Control-token prefix WindSend uses to ask the PC companion (clipboard
+/// guard) to set up Shizuku. The token rides the existing text channel on
+/// purpose: the stock PC app can only observe the clipboard, so the guard
+/// reacts when this text lands on the PC clipboard.
+const String kShizukuControlPrefix = 'windsend://shizuku?';
+
+bool _isShizukuControlPayload(ClipboardPayload payload) {
+  if (payload is! ClipboardTextPayload) {
+    return false;
+  }
+  return payload.textBundle.plainText.startsWith(kShizukuControlPrefix);
+}
+
 typedef ClipboardSyncSessionLogFn = void Function(String message);
 typedef ClipboardSyncSessionNowFn = DateTime Function();
 typedef ClipboardSyncSessionTimerFactory =
@@ -642,6 +655,14 @@ final class ClipboardSyncSession {
       payloadKind: head.payloadKind,
       body: frame.body,
     );
+    if (_isShizukuControlPayload(payload)) {
+      // Remote echo of our own Shizuku control token: consume it without
+      // touching the clipboard so it cannot loop back into the sync.
+      _maxInboundEventId = head.eventId;
+      _setState(inboundAckUpTo: _maxInboundEventId);
+      _requestAck(runtime, _maxInboundEventId);
+      return;
+    }
     _eventHub.recordRemoteWrite(payload);
     try {
       final result = await _domainAdapter.applyPayload(

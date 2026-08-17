@@ -761,7 +761,7 @@ mixin AppLocale {
     csShizukuGrantFailed: '授权失败，请确认 Shizuku 已激活后重试。',
     csShizukuAdbHint: '激活命令示例：adb shell sh /sdcard/Android/data/moe.shizuku.xyz/start.sh',
     csShizukuPcScriptHint:
-        '电脑端一键方式：手机连电脑后，运行 WindSend 目录下的 WindSend-Shizuku.bat，将自动激活 Shizuku 并弹出授权，手机只需点一次"允许"。',
+        '电脑端一键方式：手机连电脑后，打开 WindSend 会向电脑自动发送激活请求，由电脑上的 WindSend Shizuku 守卫（常驻）自动激活并拉起授权，手机只需点一次"允许"。也可双击 WindSend 目录下的 WindSend-Shizuku.bat 手动执行。',
     csWatcherUnavailable: '监听器不可用: %a',
     csWatcherActive: '监听器活跃',
     csDesktopWatcherDetail: '应用进程运行期间可观察剪贴板变化。',
@@ -1172,7 +1172,7 @@ mixin AppLocale {
     csShizukuAdbHint:
         'Example activation command: adb shell sh /sdcard/Android/data/moe.shizuku.xyz/start.sh',
     csShizukuPcScriptHint:
-        'PC one-click: with the phone connected, run WindSend-Shizuku.bat in the WindSend folder; it activates Shizuku and pops the grant dialog automatically, leaving a single "Allow" tap on the phone.',
+        'PC automatic: with the phone connected, WindSend sends an activation request to the PC automatically; the resident WindSend Shizuku guard activates Shizuku and pops the grant dialog, leaving a single "Allow" tap on the phone. WindSend-Shizuku.bat in the WindSend folder also works manually.',
     csWatcherActive: 'Watcher active',
     csDesktopWatcherDetail:
         'Clipboard changes are observed while this app process stays alive.',
