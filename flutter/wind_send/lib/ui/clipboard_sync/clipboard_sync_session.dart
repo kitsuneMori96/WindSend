@@ -896,26 +896,34 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     if (last != null && now.difference(last) < _shizukuControlCooldown) {
       return;
     }
+    int? shizukuVersion;
     try {
-      final shizukuVersion = await clipboardManager.getShizukuVersion();
-      final shizukuGranted = await clipboardManager.checkPermission(
-        EnvironmentType.shizuku,
-      );
-      final needsSetup = shizukuVersion == null ||
-          environment != EnvironmentType.shizuku ||
-          !shizukuGranted;
-      if (!needsSetup) {
-        return;
-      }
-      _lastShizukuControlSentAt = now;
-      final session = _coreSession;
-      if (session == null || session.isClosed) {
-        _syncLogger()('Shizuku setup requested but no active sync session.');
-        return;
-      }
+      shizukuVersion = await clipboardManager.getShizukuVersion();
+    } catch (error) {
+      // The plugin throws when the Shizuku binder is not connected, which
+      // simply means Shizuku is not running on this device.
+      shizukuVersion = null;
+    }
+    final shizukuGranted = await clipboardManager.checkPermission(
+      EnvironmentType.shizuku,
+    );
+    final needsSetup = shizukuVersion == null ||
+        environment != EnvironmentType.shizuku ||
+        !shizukuGranted;
+    if (!needsSetup) {
+      return;
+    }
+    final session = _coreSession;
+    if (session == null || session.isClosed) {
+      _syncLogger()('Shizuku setup requested but no active sync session.');
+      return;
+    }
+    try {
       final snapshot = ClipboardSnapshot.observed(
         payload: ClipboardPayload.text(
-          TextBundle(plainText: '${core_session.kShizukuControlPrefix}action=activate'),
+          TextBundle(
+            plainText: '${core_session.kShizukuControlPrefix}action=activate',
+          ),
         ),
         observedAt: DateTime.now().toUtc(),
         source: ClipboardObservationSource.manualRead,
@@ -923,6 +931,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       final accepted = await session.observeLocalSnapshot(snapshot);
       if (accepted) {
         _recordOutgoingSnapshotIfUiLeaseDetached(snapshot);
+        _lastShizukuControlSentAt = now;
       }
       _syncLogger()(
         accepted

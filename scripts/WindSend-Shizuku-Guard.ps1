@@ -1,4 +1,4 @@
-#requires -version 5.1
+﻿#requires -version 5.1
 #
 # WindSend-Shizuku-Guard.ps1
 #
@@ -52,7 +52,8 @@ if ($Action) {
             "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
             "$env:USERPROFILE\AppData\Local\Android\Sdk\platform-tools\adb.exe",
             'C:\Android\platform-tools\adb.exe',
-            'D:\Android\platform-tools\adb.exe'
+            'D:\Android\platform-tools\adb.exe',
+            'D:\soft\android-sdk\platform-tools\adb.exe'
         )) {
             if (Test-Path $c) { $adb = $c; break }
         }
