@@ -884,10 +884,43 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     }
   }
 
+  bool _shizukuGrantRequested = false;
+
+  /// When Shizuku is running but WindSend has not been granted permission yet,
+  /// proactively pop the Shizuku grant dialog while the app is foregrounded so
+  /// a PC-driven adb flow (activate Shizuku, bring the app forward) can finish
+  /// the grant with a single tap.
+  Future<void> _maybeAutoRequestShizukuGrant(
+    EnvironmentType environment,
+  ) async {
+    if (environment != EnvironmentType.shizuku || _shizukuGrantRequested) {
+      return;
+    }
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    try {
+      final granted = await clipboardManager.checkPermission(
+        EnvironmentType.shizuku,
+      );
+      if (granted) {
+        return;
+      }
+      _shizukuGrantRequested = true;
+      _syncLogger()(
+        'Auto-requesting Shizuku permission for ${_device.targetDeviceName}.',
+      );
+      await clipboardManager.requestPermission(EnvironmentType.shizuku);
+    } catch (error) {
+      _syncLogger()('Shizuku permission auto-request failed: $error');
+    }
+  }
+
   Future<ClipboardSyncWatcherStatus> _probeWatcherStatus() async {
     if (Platform.isAndroid) {
       try {
         final environment = await clipboardManager.getCurrentEnvironment();
+        await _maybeAutoRequestShizukuGrant(environment);
         final overlayGranted = await Permission.systemAlertWindow.isGranted;
         final notificationGranted = await Permission.notification.isGranted;
 

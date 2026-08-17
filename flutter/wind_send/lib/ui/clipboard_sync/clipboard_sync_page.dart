@@ -719,6 +719,13 @@ class _ShizukuGuideSheetState extends State<_ShizukuGuideSheet> {
                 fontFamily: 'monospace',
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              context.formatString(AppLocale.csShizukuPcScriptHint, []),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
