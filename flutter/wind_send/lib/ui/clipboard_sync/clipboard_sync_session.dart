@@ -72,11 +72,17 @@ final class ClipboardSyncWatcherStatus {
     required this.mode,
     required this.label,
     required this.details,
+    this.suggestShizuku = false,
   });
 
   final ClipboardSyncWatcherMode mode;
   final LocaleText label;
   final LocaleText details;
+
+  /// True on Android when no background clipboard observation is possible
+  /// (no root / Shizuku / pre-10 device), which is the signal for the UI to
+  /// offer the Shizuku setup guidance.
+  final bool suggestShizuku;
 
   bool get canObserveContinuously =>
       mode == ClipboardSyncWatcherMode.backgroundEnabled;
@@ -916,6 +922,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
                   AppLocale.csWatcherUnavailable,
                   [_lastWatcherSubscribeFailure!],
                 ),
+          suggestShizuku: true,
         );
       } catch (error) {
         _syncLogger()(
@@ -925,6 +932,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
           mode: ClipboardSyncWatcherMode.foregroundCatchUp,
           label: LocaleText(AppLocale.csForegroundCatchUpOnly),
           details: LocaleText(AppLocale.csForegroundCatchUpDetail),
+          suggestShizuku: true,
         );
       }
     }

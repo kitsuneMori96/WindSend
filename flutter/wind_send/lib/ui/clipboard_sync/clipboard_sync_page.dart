@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:clipshare_clipboard_listener/clipboard_manager.dart';
+import 'package:clipshare_clipboard_listener/enums.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:image/image.dart' as img;
@@ -312,8 +314,49 @@ class _ClipboardSyncPageState extends State<ClipboardSyncPage> {
               color: colorScheme.onSecondaryContainer.withValues(alpha: 0.8),
             ),
           ),
+          if (watcherStatus.suggestShizuku) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _resolveLocaleText(
+                      context,
+                      const LocaleText(AppLocale.csShizukuBanner),
+                    ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: _handleOpenShizukuGuide,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: Text(
+                    _resolveLocaleText(
+                      context,
+                      const LocaleText(AppLocale.csShizukuEnable),
+                    ),
+                    style: theme.textTheme.labelSmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Future<void> _handleOpenShizukuGuide() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => const _ShizukuGuideSheet(),
     );
   }
 
@@ -561,5 +604,152 @@ class _ClipboardSyncPageState extends State<ClipboardSyncPage> {
       return arg;
     }).toList();
     return context.formatString(text.key, resolvedArgs);
+  }
+}
+
+class _ShizukuGuideSheet extends StatefulWidget {
+  const _ShizukuGuideSheet();
+
+  @override
+  State<_ShizukuGuideSheet> createState() => _ShizukuGuideSheetState();
+}
+
+class _ShizukuGuideSheetState extends State<_ShizukuGuideSheet> {
+  bool _checking = true;
+  bool _granting = false;
+  String? _statusKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshStatus();
+  }
+
+  Future<void> _refreshStatus() async {
+    setState(() {
+      _checking = true;
+      _statusKey = null;
+    });
+    String? key;
+    try {
+      final version = await clipboardManager.getShizukuVersion();
+      if (version == null) {
+        key = AppLocale.csShizukuNotInstalled;
+      } else {
+        final granted = await clipboardManager.checkPermission(
+          EnvironmentType.shizuku,
+        );
+        key = granted
+            ? AppLocale.csShizukuGranted
+            : AppLocale.csShizukuNotRunning;
+      }
+    } catch (_) {
+      key = AppLocale.csShizukuNotInstalled;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _checking = false;
+      _statusKey = key;
+    });
+  }
+
+  Future<void> _handleGrant() async {
+    setState(() => _granting = true);
+    try {
+      await clipboardManager.requestPermission(EnvironmentType.shizuku);
+    } catch (_) {}
+    if (!mounted) {
+      return;
+    }
+    setState(() => _granting = false);
+    await _refreshStatus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.security_rounded,
+                    color: colorScheme.primary, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    context.formatString(AppLocale.csShizukuGuideTitle, []),
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              context.formatString(AppLocale.csShizukuGuideStep1, []),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              context.formatString(AppLocale.csShizukuGuideStep2, []),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              context.formatString(AppLocale.csShizukuGuideStep3, []),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              context.formatString(AppLocale.csShizukuGuideStep4, []),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              context.formatString(AppLocale.csShizukuAdbHint, []),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontFamily: 'monospace',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _checking
+                        ? ''
+                        : context.formatString(_statusKey!, []),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _granting ? null : _handleGrant,
+                  icon: _granting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle_outline, size: 18),
+                  label: Text(
+                    context.formatString(AppLocale.csShizukuGrant, []),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

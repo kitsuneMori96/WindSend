@@ -286,6 +286,19 @@ mixin AppLocale {
   static const String csWatcherActive = 'csWatcherActive';
   static const String csDesktopWatcherDetail = 'csDesktopWatcherDetail';
   static const String csIosForegroundDetail = 'csIosForegroundDetail';
+  static const String csShizukuBanner = 'csShizukuBanner';
+  static const String csShizukuEnable = 'csShizukuEnable';
+  static const String csShizukuGuideTitle = 'csShizukuGuideTitle';
+  static const String csShizukuGuideStep1 = 'csShizukuGuideStep1';
+  static const String csShizukuGuideStep2 = 'csShizukuGuideStep2';
+  static const String csShizukuGuideStep3 = 'csShizukuGuideStep3';
+  static const String csShizukuGuideStep4 = 'csShizukuGuideStep4';
+  static const String csShizukuGrant = 'csShizukuGrant';
+  static const String csShizukuNotInstalled = 'csShizukuNotInstalled';
+  static const String csShizukuNotRunning = 'csShizukuNotRunning';
+  static const String csShizukuGranted = 'csShizukuGranted';
+  static const String csShizukuGrantFailed = 'csShizukuGrantFailed';
+  static const String csShizukuAdbHint = 'csShizukuAdbHint';
 
   // Clipboard Sync - Status Messages
   static const String csSessionOpened = 'csSessionOpened';
@@ -733,6 +746,19 @@ mixin AppLocale {
     csOverlayPermissionNeeded: '持续监听剪贴板需要悬浮窗和通知权限。',
     csForegroundCatchUpOnly: '仅前台追赶',
     csForegroundCatchUpDetail: '应用不在前台时，仅在下次恢复时捕获最终剪贴板状态。',
+    csShizukuBanner: '启用 Shizuku 后可在后台监听剪贴板，实现真正的自动同步（无需 root）。',
+    csShizukuEnable: '查看并启用 Shizuku',
+    csShizukuGuideTitle: '启用 Shizuku 后台剪贴板监听',
+    csShizukuGuideStep1: '1. 安装 Shizuku App（应用商店或 shizuku.rikka.app）',
+    csShizukuGuideStep2: '2. 激活：Android 11+ 用无线调试，或电脑 USB 连接后执行 adb 命令',
+    csShizukuGuideStep3: '3. 在 Shizuku 中授权 WindSend',
+    csShizukuGuideStep4: '4. 返回本页，点击下方"授权"按钮后状态会自动刷新',
+    csShizukuGrant: '授权',
+    csShizukuNotInstalled: '未检测到 Shizuku，请先安装。',
+    csShizukuNotRunning: 'Shizuku 已安装但未激活，请先激活（无线调试或 adb）。',
+    csShizukuGranted: 'Shizuku 授权成功，正在启动后台监听…',
+    csShizukuGrantFailed: '授权失败，请确认 Shizuku 已激活后重试。',
+    csShizukuAdbHint: '激活命令示例：adb shell sh /sdcard/Android/data/moe.shizuku.xyz/start.sh',
     csWatcherUnavailable: '监听器不可用: %a',
     csWatcherActive: '监听器活跃',
     csDesktopWatcherDetail: '应用进程运行期间可观察剪贴板变化。',
@@ -1123,6 +1149,25 @@ mixin AppLocale {
     csForegroundCatchUpDetail:
         'When the app is not continuously observable, the next resume only captures the final clipboard state.',
     csWatcherUnavailable: 'Watcher unavailable: %a',
+    csShizukuBanner:
+        'Enabling Shizuku allows background clipboard monitoring for true automatic sync (no root required).',
+    csShizukuEnable: 'View and enable Shizuku',
+    csShizukuGuideTitle: 'Enable Shizuku background clipboard listening',
+    csShizukuGuideStep1: '1. Install the Shizuku app (app store or shizuku.rikka.app)',
+    csShizukuGuideStep2:
+        '2. Activate: use wireless debugging on Android 11+, or connect via USB and run the adb command',
+    csShizukuGuideStep3: '3. Grant permission to WindSend inside Shizuku',
+    csShizukuGuideStep4:
+        '4. Return here and tap "Grant"; the status refreshes automatically',
+    csShizukuGrant: 'Grant',
+    csShizukuNotInstalled: 'Shizuku is not installed. Install it first.',
+    csShizukuNotRunning:
+        'Shizuku is installed but not activated. Activate it (wireless debugging or adb).',
+    csShizukuGranted: 'Shizuku permission granted, starting background listening...',
+    csShizukuGrantFailed:
+        'Grant failed. Make sure Shizuku is activated, then retry.',
+    csShizukuAdbHint:
+        'Example activation command: adb shell sh /sdcard/Android/data/moe.shizuku.xyz/start.sh',
     csWatcherActive: 'Watcher active',
     csDesktopWatcherDetail:
         'Clipboard changes are observed while this app process stays alive.',
