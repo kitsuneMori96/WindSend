@@ -487,6 +487,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     }
 
     if (state == AppLifecycleState.resumed) {
+      _shizukuGrantRequested = false;
       unawaited(_handleAppResumed());
       return;
     }
@@ -896,16 +897,18 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       return;
     }
     try {
-      final environment = await clipboardManager.getCurrentEnvironment();
-      await _maybeRequestShizukuSetup(environment);
+      await _maybeRequestShizukuSetup();
     } catch (error) {
       _syncLogger()('Shizuku setup retry failed: $error');
     }
   }
 
-  /// When Shizuku is missing, not running, or not granted, enqueue the
-  /// control token so the PC clipboard guard can set Shizuku up over adb.
-  Future<void> _maybeRequestShizukuSetup(EnvironmentType environment) async {
+  /// When Shizuku is missing or not running, enqueue the control token so the
+  /// PC clipboard guard can activate Shizuku over adb.  The running-but-not-
+  /// granted case is deliberately excluded: the grant dialog is requested by
+  /// the app itself, and a guard-triggered `am start` would land on top of
+  /// that dialog and dismiss it.
+  Future<void> _maybeRequestShizukuSetup() async {
     final now = DateTime.now();
     final last = _lastShizukuControlSentAt;
     if (last != null && now.difference(last) < _shizukuControlCooldown) {
@@ -919,13 +922,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       // simply means Shizuku is not running on this device.
       shizukuVersion = null;
     }
-    final shizukuGranted = await clipboardManager.checkPermission(
-      EnvironmentType.shizuku,
-    );
-    final needsSetup = shizukuVersion == null ||
-        environment != EnvironmentType.shizuku ||
-        !shizukuGranted;
-    if (!needsSetup) {
+    if (shizukuVersion != null) {
       return;
     }
     final session = _coreSession;
@@ -1006,7 +1003,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     if (Platform.isAndroid) {
       try {
         final environment = await clipboardManager.getCurrentEnvironment();
-        await _maybeRequestShizukuSetup(environment);
+        await _maybeRequestShizukuSetup();
         await _maybeAutoRequestShizukuGrant();
         final overlayGranted = await Permission.systemAlertWindow.isGranted;
         final notificationGranted = await Permission.notification.isGranted;

@@ -180,9 +180,16 @@ if ($Action) {
         }
     }
 
-    # bring WindSend to foreground so it auto-requests the grant dialog
-    Write-Log 'action: bringing WindSend to foreground'
-    Invoke-Adb @('shell', 'am', 'start', '-n', 'com.doraemon.wind_send/.MainActivity') | Out-Null
+    # bring WindSend to foreground so it auto-requests the grant dialog,
+    # but never if it is already focused - an `am start` would land on top
+    # of the Shizuku grant dialog and dismiss it.
+    $focus = (Invoke-Adb @('shell', 'dumpsys', 'window') -join ' ')
+    if ($focus -match 'mCurrentFocus=.*com\.doraemon\.wind_send') {
+        Write-Log 'action: WindSend already focused, skipping am start'
+    } else {
+        Write-Log 'action: bringing WindSend to foreground'
+        Invoke-Adb @('shell', 'am', 'start', '-n', 'com.doraemon.wind_send/.MainActivity') | Out-Null
+    }
     Write-Log 'action: done - please tap Allow on the phone'
     exit 0
 }
