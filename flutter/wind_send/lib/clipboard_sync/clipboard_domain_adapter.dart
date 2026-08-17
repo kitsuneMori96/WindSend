@@ -26,7 +26,15 @@ Future<ClipboardCaptureResult> captureSnapshotWithPlainTextFallback({
   required ClipboardPlainTextFallbackReader readPlainTextFallback,
   ClipboardDomainLogFn? logger,
 }) async {
-  final captured = await adapter.captureSnapshot(source: source);
+  late final ClipboardCaptureResult captured;
+  try {
+    captured = await adapter.captureSnapshot(source: source);
+  } catch (error, stackTrace) {
+    logger?.call(
+      'Clipboard capture threw for ${source.name}: $error\n$stackTrace',
+    );
+    captured = ClipboardCaptureUnavailable('capture threw: $error');
+  }
   if (captured case ClipboardCaptureSuccess()) {
     return captured;
   }

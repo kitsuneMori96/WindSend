@@ -19,6 +19,7 @@ import 'package:wind_send/clipboard_sync/clipboard_sync_transport.dart';
 import 'package:wind_send/clipboard_sync/remote_peer_key.dart';
 import 'package:wind_send/clipboard_sync/sync_session_protocol.dart';
 import 'package:wind_send/clipboard_sync/sync_session_watcher.dart';
+import 'package:wind_send/utils/logger.dart';
 import 'package:wind_send/device.dart';
 import 'package:wind_send/language.dart';
 
@@ -510,6 +511,11 @@ final class ClipboardSyncPageSession extends ChangeNotifier
     unawaited(_refreshWatcherStatusAndSyncContinuousObservation());
   }
 
+  core_session.ClipboardSyncSessionLogFn _syncLogger() {
+    final logger = SharedLogger().logger;
+    return (message) => logger.d('clipboard_sync: $message');
+  }
+
   Future<void> _spawnCoreSession({required bool isReconnect}) async {
     final generation = ++_startGeneration;
     _fallbackPhase = isReconnect
@@ -522,8 +528,12 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       return;
     }
 
+    final syncLogger = _syncLogger();
     final transportConnector = _ObservingClipboardSyncTransportConnector(
-      delegate: DeviceClipboardSyncTransportConnector(device: _device),
+      delegate: DeviceClipboardSyncTransportConnector(
+        device: _device,
+        logger: syncLogger,
+      ),
       onTransportOpened: (transportLabel) {
         _transportKind = switch (transportLabel) {
           'direct' => ClipboardSyncTransportKind.direct,
@@ -548,6 +558,7 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       domainAdapter: domainAdapter,
       transportConnector: transportConnector,
       localCapabilities: _capabilities,
+      logger: syncLogger,
     );
     _coreSession = session;
     _coreState = session.state;
@@ -597,23 +608,29 @@ final class ClipboardSyncPageSession extends ChangeNotifier
       return;
     }
 
-    final result = await _captureSnapshotWithForegroundFallback(
-      source: ClipboardObservationSource.foregroundCatchUp,
-    );
-    switch (result) {
-      case ClipboardCaptureSuccess(:final snapshot):
-        final accepted = await session.observeLocalSnapshot(snapshot);
-        if (!accepted) {
-          return;
-        }
-        _recordOutgoingSnapshotIfUiLeaseDetached(snapshot);
-        _recordStatus(
-          const LocaleText(AppLocale.csForegroundCatchUpCaptured),
-          icon: Icons.history,
-        );
-      case ClipboardCaptureEmpty():
-      case ClipboardCaptureUnavailable():
-      case ClipboardCaptureUnsupported():
+    try {
+      final result = await _captureSnapshotWithForegroundFallback(
+        source: ClipboardObservationSource.foregroundCatchUp,
+      );
+      switch (result) {
+        case ClipboardCaptureSuccess(:final snapshot):
+          final accepted = await session.observeLocalSnapshot(snapshot);
+          if (!accepted) {
+            return;
+          }
+          _recordOutgoingSnapshotIfUiLeaseDetached(snapshot);
+          _recordStatus(
+            const LocaleText(AppLocale.csForegroundCatchUpCaptured),
+            icon: Icons.history,
+          );
+        case ClipboardCaptureEmpty():
+        case ClipboardCaptureUnavailable():
+        case ClipboardCaptureUnsupported():
+      }
+    } catch (error) {
+      _syncLogger()(
+        'Foreground catch-up failed for ${_device.targetDeviceName}: $error',
+      );
     }
   }
 
@@ -863,42 +880,53 @@ final class ClipboardSyncPageSession extends ChangeNotifier
 
   Future<ClipboardSyncWatcherStatus> _probeWatcherStatus() async {
     if (Platform.isAndroid) {
-      final environment = await clipboardManager.getCurrentEnvironment();
-      final overlayGranted = await Permission.systemAlertWindow.isGranted;
-      final notificationGranted = await Permission.notification.isGranted;
+      try {
+        final environment = await clipboardManager.getCurrentEnvironment();
+        final overlayGranted = await Permission.systemAlertWindow.isGranted;
+        final notificationGranted = await Permission.notification.isGranted;
 
-      if (environment != EnvironmentType.none &&
-          overlayGranted &&
-          notificationGranted) {
+        if (environment != EnvironmentType.none &&
+            overlayGranted &&
+            notificationGranted) {
+          return ClipboardSyncWatcherStatus(
+            mode: ClipboardSyncWatcherMode.backgroundEnabled,
+            label: const LocaleText(AppLocale.csBackgroundListenerEnabled),
+            details: LocaleText(
+              AppLocale.csAndroidWatcherActive,
+              [environment.name],
+            ),
+          );
+        }
+
+        if (environment != EnvironmentType.none &&
+            (!overlayGranted || !notificationGranted)) {
+          return const ClipboardSyncWatcherStatus(
+            mode: ClipboardSyncWatcherMode.waitingPermission,
+            label: LocaleText(AppLocale.csWaitingOverlayPermission),
+            details: LocaleText(AppLocale.csOverlayPermissionNeeded),
+          );
+        }
+
         return ClipboardSyncWatcherStatus(
-          mode: ClipboardSyncWatcherMode.backgroundEnabled,
-          label: const LocaleText(AppLocale.csBackgroundListenerEnabled),
-          details: LocaleText(
-            AppLocale.csAndroidWatcherActive,
-            [environment.name],
-          ),
+          mode: ClipboardSyncWatcherMode.foregroundCatchUp,
+          label: const LocaleText(AppLocale.csForegroundCatchUpOnly),
+          details: _lastWatcherSubscribeFailure == null
+              ? const LocaleText(AppLocale.csForegroundCatchUpDetail)
+              : LocaleText(
+                  AppLocale.csWatcherUnavailable,
+                  [_lastWatcherSubscribeFailure!],
+                ),
         );
-      }
-
-      if (environment != EnvironmentType.none &&
-          (!overlayGranted || !notificationGranted)) {
+      } catch (error) {
+        _syncLogger()(
+          'Watcher capability probe failed on Android: $error',
+        );
         return const ClipboardSyncWatcherStatus(
-          mode: ClipboardSyncWatcherMode.waitingPermission,
-          label: LocaleText(AppLocale.csWaitingOverlayPermission),
-          details: LocaleText(AppLocale.csOverlayPermissionNeeded),
+          mode: ClipboardSyncWatcherMode.foregroundCatchUp,
+          label: LocaleText(AppLocale.csForegroundCatchUpOnly),
+          details: LocaleText(AppLocale.csForegroundCatchUpDetail),
         );
       }
-
-      return ClipboardSyncWatcherStatus(
-        mode: ClipboardSyncWatcherMode.foregroundCatchUp,
-        label: const LocaleText(AppLocale.csForegroundCatchUpOnly),
-        details: _lastWatcherSubscribeFailure == null
-            ? const LocaleText(AppLocale.csForegroundCatchUpDetail)
-            : LocaleText(
-                AppLocale.csWatcherUnavailable,
-                [_lastWatcherSubscribeFailure!],
-              ),
-      );
     }
 
     if (Platform.isIOS) {
